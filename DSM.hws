@@ -1,0 +1,148 @@
+Const #VERSION = "0.1.6"
+
+; http://myds.com:5000/webapi/DownloadStation/task.cgi?api=SYNO.DownloadStation.Task&version=1&method=list
+; http://myds.com:5000/webapi/DownloadStation/task.cgi?api=SYNO.DownloadStation.Task&version=1&method=getinfo&id=dbid_001&additional=detail,transfer
+
+; waiting
+; downloading
+; paused
+; finishing
+; finished
+; hash_checking
+; seeding
+; filehosting_waiting
+; extracting
+; error
+
+@APPAUTHOR 		    "D.Vanderveken 2016"
+@APPDESCRIPTION     "Synology Download Tools"
+@APPVERSION         #VERSION
+@BRUSH              1,"sds.png",{ LoadAlpha = True }
+@DISPLAY            { Hidden = True           }
+;@OPTIONS            { RegisterApplication = 1 }
+
+DSM               = {}
+DSM.IP            = {}
+DSM.PORT          = {}
+
+DSM.SECURE        = {}
+DSM.LOGIN         = {}
+DSM.PASSWORD      = {}
+
+Function Req(Text)
+	Title = "[B]Download Station Tool "..#VERSION.."[/B]"
+    Inf = CreateDisplay(Nil, {x = #LEFT+20, y = #BOTTOM-20, Width = 320, Height = 100, Borderless = True,Color = $AAAAAA, Active = True})
+    SelectDisplay(Inf)
+    SetFillStyle(#FILLCOLOR)
+    Box(0,0,320,30,#BLACK)
+    SetFont(#SANS,20)
+    CreateTextObject(1,Title,{ Align = #CENTER })
+    CreateTextObject(2,Text, { WordWarp = False})
+    DisplayBrush(1,5,40)
+    DisplayTextObject(1,(320-TextWidth(Title))/2,5)
+    DisplayTextObject(2,(320-TextWidth(Text))/2,((100-TextHeight(Text))/2)+10)
+    OpenDisplay(Inf)
+EndFunction
+
+Function RexxFunc(msg)
+  Switch msg.action
+  Case "OnARexx"
+	Switch msg.command
+	Case "RealFunc"
+	  Return(100)
+	Default
+	  Local t = SplitStr(msg.args, "\0")
+	  DebugPrint(msg.command, "called with", msg.argc, "argument(s)")
+	  For Local k = 1 To msg.argc
+		 DebugPrint("Argument", k .. ":", t[k - 1])
+	  Next
+	EndSwitch
+  EndSwitch
+EndFunction
+
+Function Arexx()
+	CreateRexxPort("DSM")
+	InstallEventHandler({OnARexx = RexxFunc})
+    ;Req("Arexx Port Created")
+EndFunction
+
+Function LoginDS()
+    Login$ =  "GET http://"..DSM.IP[0]..":"..DSM.PORT[0].."/webapi/auth.cgi?api=SYNO.API.Auth&version=2&method=login&account=Dominique&passwd=Vanddom8&session=DownloadStation&format=sid HTTP/1.1\r\n"..
+              "Host: "..DSM.IP[0]..":"..DSM.PORT[0].."\r\n\r\n"
+    Req("Adding Your Link")
+    Sock = OpenConnection(Nil,DSM.IP[0],DSM.PORT[0])
+    SendData(Sock,Login$)
+    SockRep = ReceiveData(Sock,#RECEIVEALL)
+    Sid = MidStr(SockRep,FindStr(sockrep,":\"")+2,23)
+    CloseConnection(Sock)
+    If StrLen(sid) > 0
+      Req("Connection Successfull")
+    Else
+      Req("Error While Logging")
+    EndIf
+EndFunction
+
+Function SendDS(URL)
+Task$    =  "--8d2ca446d9ae479\r\n"..
+            "Content-Disposition: form-data; name=\"api\"\r\n\r\n"..
+
+            "SYNO.DownloadStation.Task\r\n"..
+            "--8d2ca446d9ae479\r\n"..
+            "Content-Disposition: form-data; name=\"version\"\r\n\r\n"..
+
+            "1\r\n"..
+            "--8d2ca446d9ae479\r\n"..
+            "Content-Disposition: form-data; name=\"method\"\r\n\r\n"..
+
+            "create\r\n"..
+            "--8d2ca446d9ae479\r\n"..
+            "Content-Disposition: form-data; name=\"unzip_password\"\r\n\r\n"..
+
+            "banane\r\n"..
+            "--8d2ca446d9ae479\r\n"..
+            "Content-Disposition: form-data; name=\"_sid\"\r\n\r\n"..
+
+            Sid.."\r\n"..
+            "--8d2ca446d9ae479\r\n"..
+            "Content-Disposition: form-data; name=\"file\"; filename=\"urls.txt\"\r\n"..
+            "Content-Type: text/plain\r\n\r\n"..
+
+             URL.."\r\n"..
+             "--8d2ca446d9ae479--\r\n"
+
+  Header$ =  "POST http://"..DSM.IP[0]..":"..DSM.PORT[0].."/webapi/DownloadStation/task.cgi HTTP/1.1\r\n"..
+             "Content-Type: multipart/form-data; boundary=8d2ca446d9ae479\r\n"..
+             "Host: "..DSM.IP[0]..":"..DSM.PORT[0].."\r\n"..
+             "Expect: 100-continue\r\n"..
+             "Content-Length: "..StrLen(Task$).."\r\n\r\n"..Task$.."\r\n"
+
+  Sock = OpenConnection(Nil,DSM.IP[0],DSM.PORT[0])
+  SendData(Sock,Header$)
+  SockRep = ReceiveData(Sock,#RECEIVEALL)
+  CloseConnection(Sock)
+  If FindStr(Sockrep,"succes") > -1
+    Str,Count = SplitStr(URL,"/")
+    Req(Str[(Count-1)].." Added")
+    Wait(5,#SECONDS)
+  EndIf
+EndFunction
+
+ScaleBrush(1,50,50,Smooth)
+arg,count = GetCommandLine()
+
+If count > 0
+     DSM.IP[0]       = Arg[0].param
+     DSM.PORT[0]     = Arg[1].param
+     DSM.LOGIN[0]    = Arg[2].param
+     DSM.PASSWORD[0] = Arg[3].param
+     LoginDS()
+     SendDS(Arg[4].param)
+     End()
+Else
+    Req("Error : No Arguments")
+    Wait(5,#SECONDS)
+    End()
+EndIf
+
+
+
